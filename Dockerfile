@@ -1,4 +1,4 @@
 # Bundle Stage
 FROM alpine
-ADD ./zobar /zobar
-CMD ["/zobar"]
+ADD ./zotimer /zotimer
+CMD ["/zotimer"]

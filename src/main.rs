@@ -1,8 +1,14 @@
+#![allow(unused_must_use)]
+#![allow(dead_code)]
 extern crate crossbeam_channel;
 
 use chrono::prelude::*;
 use crossbeam_channel::{after, bounded, select, tick, unbounded, Receiver, Sender};
+use parse_duration::parse;
+use rodio::{self, Sink, Source};
+use std::fs::File;
 use std::io;
+use std::io::BufReader;
 use std::thread;
 use std::time;
 
@@ -28,16 +34,29 @@ fn run_reminder(
             i += 1;
             select! {
                 recv(ticker) -> x => {
-                    if let Err(a) =  reminder_channel.send(format!("{} - {}", i, get_time())) {
+                    if let Err(a) =  reminder_channel.send(format!("{:>2} - {}", i, get_time())) {
                         eprintln!("Failed to send to channel {:?} {:?}", a, x);
                     }
                 },
                 recv(quit_channel) -> _ => {
-                    break
+                    break;
                 }
             }
         }
     });
+}
+
+fn run_mp3(fpath: &str, repeat: u8) {
+    let f = File::open(fpath).unwrap();
+    let device = rodio::default_output_device().unwrap();
+    let sink = Sink::new(&device);
+
+    let source = rodio::Decoder::new(BufReader::new(f)).unwrap().buffered();
+
+    (0..repeat).for_each(|_| sink.append(source.clone()));
+
+    sink.play();
+    sink.sleep_until_end();
 }
 
 fn get_alarm(
@@ -69,7 +88,7 @@ fn get_alarm(
 
     AlarmChannel {
         alarm: rx_alarm,
-        reminder: rx_reminder_tick.clone(),
+        reminder: rx_reminder_tick,
     }
 }
 
@@ -86,12 +105,12 @@ fn get_keyboard_channel() -> Receiver<String> {
 }
 
 fn main() {
-    let (alarm_reset_tx, alarm_reset_rx) = unbounded();
+    let (tx_alarm_reset, rx_alarm_reset) = unbounded();
 
     let alarm_channel = get_alarm(
-        std::time::Duration::from_secs(10),
-        std::time::Duration::from_secs(2),
-        alarm_reset_rx.clone(),
+        parse("13 minutes 40 seconds").unwrap(),
+        parse("1 minutes").unwrap(),
+        rx_alarm_reset,
     );
 
     let keyboard_channel = get_keyboard_channel();
@@ -102,11 +121,16 @@ fn main() {
                 println!("{}", date.unwrap());
             },
             recv(alarm_channel.alarm) -> date => {
-                println!("ALARM {}", date.unwrap());
+                println!("*** RUN ALARAM *** -> {}", date.unwrap());
+                thread::spawn(|| {
+                    run_mp3("1.mp3", 3);
+                });
             },
             recv(keyboard_channel) -> s => {
-                println!("KEY {}", s.unwrap());
-                alarm_reset_tx.send(true).unwrap();
+                if s.unwrap().trim() == "r" {
+                    tx_alarm_reset.send(true).unwrap();
+                }
+                println!("\n{}\n", "========================================");
             }
         }
     }

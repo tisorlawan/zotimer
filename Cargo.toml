@@ -1,5 +1,5 @@
 [package]
-name = "zobar"
+name = "zotimer"
 version = "0.1.0"
 authors = ["Agung Baptiso Sorlawan <agung.sorlawan@prosa.ai>"]
 edition = "2018"
@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 crossbeam-channel = "0.4"
 chrono = "0.4"
+parse_duration = "2.1"
+rodio = "0.11"
