@@ -1,5 +1,6 @@
 extern crate crossbeam_channel;
 
+use ansi_term::{Color::Blue, Style};
 use chrono::prelude::*;
 use clap::{self, Arg};
 use crossbeam_channel::{after, bounded, select, tick, unbounded, Receiver, Sender};
@@ -108,7 +109,7 @@ fn clear() {
         .status()
         .unwrap()
         .success();
-    println!("\n{}\n", "==== START ALARM ====");
+    println!("\n{}\n", Style::new().bold().paint("==== START ALARM ===="));
 }
 
 fn main() {
@@ -163,7 +164,7 @@ fn main() {
                 println!("{}", date.unwrap());
             },
             recv(alarm_channel.alarm) -> date => {
-                println!("{} [RUN ALARAM]", date.unwrap());
+                println!("{}", Blue.bold().paint(format!("{} [RUN ALARAM]", date.unwrap())));
                 thread::spawn(|| {
                     run_mp3("1.mp3", 3);
                 });
