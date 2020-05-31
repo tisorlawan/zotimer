@@ -10,7 +10,7 @@ use std::fs::File;
 use std::io;
 use std::io::BufReader;
 use std::thread;
-use std::time;
+use std::time::{self, Duration};
 
 fn get_time() -> String {
     let local = Local::now();
@@ -104,12 +104,38 @@ fn get_keyboard_channel() -> Receiver<String> {
     rx
 }
 
-fn clear() {
+fn duration_to_display(d: Duration) -> String {
+    const PER_MINUTES: u64 = 60;
+    const PER_HOUR: u64 = PER_MINUTES * 60;
+
+    let secs = d.as_secs();
+
+    let h = secs / PER_HOUR;
+    let m = (secs % PER_HOUR) / PER_MINUTES;
+    let s = secs % PER_MINUTES;
+
+    let mut res = String::new();
+    if h > 0 {
+        res += &format!("{} hours   ", h);
+    }
+    if m > 0 || h > 0 {
+        res += &format!("{:>2} minutes   ", m);
+    }
+
+    if s > 0 || m > 0 || h > 0 {
+        res += &format!("{:>2} seconds   ", s);
+    }
+    res
+}
+
+fn reset(alarm_time: Duration, reminder_time: Duration) {
     std::process::Command::new("clear")
         .status()
         .unwrap()
         .success();
     println!("\n{}\n", Style::new().bold().paint("==== START ALARM ===="));
+    println!("ALARM    : {}", duration_to_display(alarm_time));
+    println!("REMINDER : {}\n", duration_to_display(reminder_time));
 }
 
 fn main() {
@@ -134,18 +160,20 @@ fn main() {
         .get_matches();
 
     let alarm_time = matches.value_of("time").unwrap_or("14 minutes 20 seconds");
-    let alarm_time = match parse(alarm_time) {
-        Ok(t) => t,
-        Err(_) => {
+    let alarm_time = {
+        if let Ok(t) = parse(alarm_time) {
+            t
+        } else {
             eprintln!("Can't parse '{}'", alarm_time);
             std::process::exit(1);
         }
     };
 
     let reminder_time = matches.value_of("reminder").unwrap_or("1 minutes");
-    let reminder_time = match parse(reminder_time) {
-        Ok(t) => t,
-        Err(_) => {
+    let reminder_time = {
+        if let Ok(t) = parse(reminder_time) {
+            t
+        } else {
             eprintln!("Can't parse '{}'", reminder_time);
             std::process::exit(1);
         }
@@ -157,7 +185,7 @@ fn main() {
 
     let keyboard_channel = get_keyboard_channel();
 
-    clear();
+    reset(alarm_time, reminder_time);
     loop {
         select! {
             recv(alarm_channel.reminder) -> date => {
@@ -170,8 +198,8 @@ fn main() {
                 });
             },
             recv(keyboard_channel) -> s => {
-                clear();
                 if s.unwrap().trim() == "r" {
+                    reset(alarm_time, reminder_time);
                     tx_alarm_reset.send(true).unwrap();
                 }
             }
