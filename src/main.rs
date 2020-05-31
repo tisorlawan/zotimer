@@ -1,13 +1,16 @@
 extern crate crossbeam_channel;
 
-use ansi_term::{Color::Blue, Style};
+use ansi_term::Color;
 use chrono::prelude::*;
 use crossbeam_channel::{after, bounded, select, tick, unbounded, Receiver, Sender};
 use parse_duration::parse as parse_duration;
 use rodio::{self, Sink, Source};
+use shellexpand::LookupError;
+use std::env::VarError;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
+use std::path::PathBuf;
 use std::thread;
 use std::time::{self, Duration};
 use structopt::StructOpt;
@@ -46,7 +49,7 @@ fn run_reminder(
     });
 }
 
-fn run_mp3(fpath: &str, repeat: u8) {
+fn run_mp3(fpath: PathBuf, repeat: u8) {
     let f = File::open(fpath).unwrap();
     let device = rodio::default_output_device().unwrap();
     let sink = Sink::new(&device);
@@ -128,14 +131,24 @@ fn duration_to_display(d: Duration) -> String {
     res
 }
 
-fn reset(alarm_time: Duration, reminder_time: Duration) {
+fn reset(opt: &Opt) {
     std::process::Command::new("clear")
         .status()
         .unwrap()
         .success();
-    println!("\n{}\n", Style::new().bold().paint("==== START ALARM ===="));
-    println!("ALARM    : {}", duration_to_display(alarm_time));
-    println!("REMINDER : {}\n", duration_to_display(reminder_time));
+    println!(
+        "\n{}\n",
+        Color::Cyan
+            .bold()
+            .paint("=========== START ALARM ===========")
+    );
+    println!("File     : {}\n", opt.file.to_str().unwrap());
+    println!("Alarm    : {}", duration_to_display(opt.time));
+    println!("Reminder : {}\n", duration_to_display(opt.reminder));
+}
+
+fn parse_path(path: &str) -> Result<PathBuf, LookupError<VarError>> {
+    Ok(PathBuf::from(shellexpand::full(&path)?.into_owned()))
 }
 
 #[derive(StructOpt, Debug)]
@@ -145,10 +158,14 @@ struct Opt {
 
     #[structopt(short, long, parse(try_from_str = parse_duration), default_value="1m")]
     reminder: Duration,
+
+    #[structopt(short, long, parse(try_from_str = parse_path), default_value = "~/musics/Alarms/1.mp3")]
+    file: PathBuf,
 }
 
 fn main() {
     let opt = Opt::from_args();
+    println!("{:?}", opt.file);
 
     let (tx_alarm_reset, rx_alarm_reset) = unbounded();
 
@@ -156,21 +173,22 @@ fn main() {
 
     let keyboard_channel = get_keyboard_channel();
 
-    reset(opt.time, opt.reminder);
+    reset(&opt);
     loop {
         select! {
             recv(alarm_channel.reminder) -> date => {
                 println!("{}", date.unwrap());
             },
             recv(alarm_channel.alarm) -> date => {
-                println!("{}", Blue.bold().paint(format!("{} [RUN ALARAM]", date.unwrap())));
+                println!("{}", Color::Blue.bold().paint(format!("{} [RUN ALARAM]", date.unwrap())));
+                let file = opt.file.clone();
                 thread::spawn(|| {
-                    run_mp3("1.mp3", 3);
+                    run_mp3(file, 3);
                 });
             },
             recv(keyboard_channel) -> s => {
                 if s.unwrap().trim() == "r" {
-                    reset(opt.time, opt.reminder);
+                    reset(&opt);
                     tx_alarm_reset.send(true).unwrap();
                 }
             }
