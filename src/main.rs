@@ -2,15 +2,15 @@ extern crate crossbeam_channel;
 
 use ansi_term::{Color::Blue, Style};
 use chrono::prelude::*;
-use clap::{self, Arg};
 use crossbeam_channel::{after, bounded, select, tick, unbounded, Receiver, Sender};
-use parse_duration::parse;
+use parse_duration::parse as parse_duration;
 use rodio::{self, Sink, Source};
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
 use std::thread;
 use std::time::{self, Duration};
+use structopt::StructOpt;
 
 fn get_time() -> String {
     let local = Local::now();
@@ -138,54 +138,25 @@ fn reset(alarm_time: Duration, reminder_time: Duration) {
     println!("REMINDER : {}\n", duration_to_display(reminder_time));
 }
 
+#[derive(StructOpt, Debug)]
+struct Opt {
+    #[structopt(short, long, parse(try_from_str = parse_duration), default_value="14m30s")]
+    time: Duration,
+
+    #[structopt(short, long, parse(try_from_str = parse_duration), default_value="1m")]
+    reminder: Duration,
+}
+
 fn main() {
-    #[allow(unused_variables)]
-    let matches = clap::App::new("Alarm")
-        .arg(
-            Arg::with_name("time")
-                .short("t")
-                .long("time")
-                .value_name("TIME")
-                .help("Duration in which the alarm will be trigerred")
-                .takes_value(true),
-        )
-        .arg(
-            Arg::with_name("reminder")
-                .short("r")
-                .long("reminder")
-                .value_name("REMINDER")
-                .help("Reminder of alarm")
-                .takes_value(true),
-        )
-        .get_matches();
-
-    let alarm_time = matches.value_of("time").unwrap_or("14 minutes 20 seconds");
-    let alarm_time = {
-        if let Ok(t) = parse(alarm_time) {
-            t
-        } else {
-            eprintln!("Can't parse '{}'", alarm_time);
-            std::process::exit(1);
-        }
-    };
-
-    let reminder_time = matches.value_of("reminder").unwrap_or("1 minutes");
-    let reminder_time = {
-        if let Ok(t) = parse(reminder_time) {
-            t
-        } else {
-            eprintln!("Can't parse '{}'", reminder_time);
-            std::process::exit(1);
-        }
-    };
+    let opt = Opt::from_args();
 
     let (tx_alarm_reset, rx_alarm_reset) = unbounded();
 
-    let alarm_channel = get_alarm(alarm_time, reminder_time, rx_alarm_reset);
+    let alarm_channel = get_alarm(opt.time, opt.reminder, rx_alarm_reset);
 
     let keyboard_channel = get_keyboard_channel();
 
-    reset(alarm_time, reminder_time);
+    reset(opt.time, opt.reminder);
     loop {
         select! {
             recv(alarm_channel.reminder) -> date => {
@@ -199,7 +170,7 @@ fn main() {
             },
             recv(keyboard_channel) -> s => {
                 if s.unwrap().trim() == "r" {
-                    reset(alarm_time, reminder_time);
+                    reset(opt.time, opt.reminder);
                     tx_alarm_reset.send(true).unwrap();
                 }
             }
