@@ -1,22 +1,20 @@
 extern crate crossbeam_channel;
 
 use ansi_term::Color;
-use chrono::prelude::*;
 use crossbeam_channel::{after, bounded, select, tick, unbounded, Receiver, Sender};
 use parse_duration::parse as parse_duration;
 use rodio::{self, Sink, Source};
-use shellexpand::LookupError;
-use std::env::VarError;
 use std::fs::File;
 use std::io;
 use std::io::BufReader;
+use std::io::Read;
 use std::path::PathBuf;
 use std::thread;
 use std::time::{self, Duration};
 use structopt::StructOpt;
 
 fn get_time() -> String {
-    let local = Local::now();
+    let local = chrono::Local::now();
     local.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
@@ -118,13 +116,13 @@ fn duration_to_display(d: Duration) -> String {
     let s = secs % PER_MINUTES;
 
     let mut res = String::new();
+
     if h > 0 {
         res += &format!("{} hours   ", h);
     }
     if m > 0 || h > 0 {
         res += &format!("{:>2} minutes   ", m);
     }
-
     if s > 0 || m > 0 || h > 0 {
         res += &format!("{:>2} seconds   ", s);
     }
@@ -147,19 +145,37 @@ fn reset(opt: &Opt) {
     println!("Reminder : {}\n", duration_to_display(opt.reminder));
 }
 
-fn parse_path(path: &str) -> Result<PathBuf, LookupError<VarError>> {
-    Ok(PathBuf::from(shellexpand::full(&path)?.into_owned()))
+fn parse_mp3_path<P>(path: P) -> Result<PathBuf, String>
+where
+    P: AsRef<str>,
+{
+    let path = PathBuf::from(
+        shellexpand::full(&path)
+            .map_err(|_| "Invalid path")?
+            .into_owned(),
+    );
+
+    let mut file = File::open(&path).map_err(|e| e.to_string())?;
+
+    let mut buf = [0; 3];
+    file.read_exact(&mut buf).map_err(|e| e.to_string())?;
+
+    if buf.as_ref() != b"ID3" {
+        return Err("Not a valid MP3 file".to_owned());
+    }
+
+    Ok(path)
 }
 
 #[derive(StructOpt, Debug)]
 struct Opt {
-    #[structopt(short, long, parse(try_from_str = parse_duration), default_value="14m30s")]
+    #[structopt(short, long, parse(try_from_str = parse_duration))]
     time: Duration,
 
-    #[structopt(short, long, parse(try_from_str = parse_duration), default_value="1m")]
+    #[structopt(short, long, parse(try_from_str = parse_duration))]
     reminder: Duration,
 
-    #[structopt(short, long, parse(try_from_str = parse_path), default_value = "~/musics/Alarms/1.mp3")]
+    #[structopt(short, long, parse(try_from_str = parse_mp3_path))]
     file: PathBuf,
 }
 
