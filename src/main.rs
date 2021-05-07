@@ -199,7 +199,7 @@ fn main() {
                 println!("{}", Color::Blue.bold().paint(format!("{} [RUN ALARAM]", date.unwrap())));
                 let file = opt.file.clone();
                 thread::spawn(|| {
-                    run_mp3(file, 3);
+                    run_mp3(file, 2);
                 });
             },
             recv(keyboard_channel) -> s => {
