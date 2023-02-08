@@ -160,9 +160,9 @@ where
     let mut buf = [0; 3];
     file.read_exact(&mut buf).map_err(|e| e.to_string())?;
 
-    if buf.as_ref() != b"ID3" {
-        return Err("Not a valid MP3 file".to_owned());
-    }
+    // if buf.as_ref() != b"ID3" {
+    //     return Err("Not a valid MP3 file".to_owned());
+    // }
 
     Ok(path)
 }
